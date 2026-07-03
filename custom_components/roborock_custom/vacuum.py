@@ -320,12 +320,21 @@ def _map_activity(state_name: str | None) -> VacuumActivity:
     if "error" in state or "fault" in state:
         return VacuumActivity.ERROR
     if state in {
+        # Valeurs YXDeviceState (python-roborock 5.22, B01/Q10)
         "cleaning",
+        "sweeping",
+        "mopping",
+        "sweep_and_mop",
+        "mapping",
+        "saving_map",
+        "relocating",
+        "transitioning",
+        "emptying_the_bin",
+        "remote_control_active",
+        # Valeurs V1 / historiques
         "spot_cleaning",
         "zoned_cleaning",
         "segment_cleaning",
-        "mapping",
-        "emptying_the_bin",
         "washing_the_mop",
         "cleaningstate",
         "creatingmapstate",
@@ -346,6 +355,10 @@ def _map_activity(state_name: str | None) -> VacuumActivity:
         "back_to_dock_washing_duster",
     }:
         return VacuumActivity.RETURNING
-    if "charging" in state or state in {"chargingstate", "standbystate"}:
+    if "charging" in state or state in {
+        "chargingstate",
+        "standbystate",
+        "waiting_to_charge",
+    }:
         return VacuumActivity.DOCKED
     return VacuumActivity.IDLE

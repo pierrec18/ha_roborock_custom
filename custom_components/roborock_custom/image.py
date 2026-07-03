@@ -21,11 +21,15 @@ from .coordinator import RoborockDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Fraction minimale de points du trajet devant tomber dans la grille pour que
-# l'overlay soit dessine. Les coordonnees de trace B01 ne sont pas documentees;
-# l'hypothese (unites = cellules de grille, origine partagee) est verifiee a
-# chaque rendu et l'overlay est saute si elle ne tient pas.
-_MIN_IN_BOUNDS_RATIO = 0.9
+# Les coordonnees de trace B01 ne sont pas documentees (int16 signes, origine
+# inconnue — observe: valeurs negatives, donc pas le coin de la grille). On
+# teste plusieurs transformations candidates et on garde celle dont les points
+# tombent majoritairement sur du sol (pixels de piece, ni exterieur ni mur).
+_MIN_FLOOR_SCORE = 0.5
+
+# Couleurs du rendu de B01Q10MapParser (voir _build_palette dans la lib).
+_OUTSIDE_COLOR = (28, 30, 38)
+_WALL_COLOR = (235, 235, 240)
 
 _PATH_COLOR = (255, 255, 255, 170)
 _ROBOT_FILL = (66, 165, 245, 255)
@@ -43,11 +47,53 @@ async def async_setup_entry(hass: HomeAssistant, entry: RoborockConfigEntry, asy
     async_add_entities(entities)
 
 
+def _pixel_transforms(grid_w: int, grid_h: int, scale_x: float, scale_y: float):
+    """Candidate trace→pixel transforms: origine {coin, centre} × y {inverse, direct}.
+
+    Le rendu de la lib retourne l'image verticalement (FLIP_TOP_BOTTOM), d'ou
+    les variantes en y. Retourne {nom: fonction (x, y) -> (px, py)}.
+    """
+    half_w = grid_w / 2
+    half_h = grid_h / 2
+
+    def make(offset_x: float, offset_y: float, flip_y: bool):
+        def to_pixel(x: float, y: float) -> tuple[float, float]:
+            gx = x + offset_x
+            gy = y + offset_y
+            py = (grid_h - 1 - gy + 0.5) if flip_y else (gy + 0.5)
+            return ((gx + 0.5) * scale_x, py * scale_y)
+
+        return to_pixel
+
+    return {
+        "corner_yflip": make(0, 0, True),
+        "corner_ydirect": make(0, 0, False),
+        "center_yflip": make(half_w, half_h, True),
+        "center_ydirect": make(half_w, half_h, False),
+    }
+
+
+def _floor_score(img: Image.Image, pixels: list[tuple[float, float]]) -> float:
+    """Fraction of points landing on floor pixels (inside a room)."""
+    if not pixels:
+        return 0.0
+    rgb = img.convert("RGB")
+    hits = 0
+    for px, py in pixels:
+        if not (0 <= px < rgb.width and 0 <= py < rgb.height):
+            continue
+        color = rgb.getpixel((int(px), int(py)))
+        if color != _OUTSIDE_COLOR and color != _WALL_COLOR:
+            hits += 1
+    return hits / len(pixels)
+
+
 def _compose_map(snapshot: MapSnapshot) -> bytes | None:
     """Draw the live path and robot position onto the rendered map PNG.
 
-    Runs in the executor (PIL is CPU-bound). Returns the plain map when there
-    is no live trace or when the trace does not line up with the grid.
+    Runs in the executor (PIL is CPU-bound). The trace→grid transform is
+    auto-calibrated: candidate transforms are scored by how many path points
+    land on floor pixels, and the overlay is skipped when none fits.
     """
     if snapshot.image is None:
         return None
@@ -56,36 +102,42 @@ def _compose_map(snapshot: MapSnapshot) -> bytes | None:
 
     grid_w = snapshot.grid_width
     grid_h = snapshot.grid_height
-    in_bounds = [p for p in snapshot.path if 0 <= p[0] < grid_w and 0 <= p[1] < grid_h]
-    if len(in_bounds) / len(snapshot.path) < _MIN_IN_BOUNDS_RATIO:
-        xs = [p[0] for p in snapshot.path]
-        ys = [p[1] for p in snapshot.path]
-        _LOGGER.debug(
-            "Trace hors grille (calibration requise): x=[%s..%s] y=[%s..%s] vs grille %sx%s",
-            min(xs), max(xs), min(ys), max(ys), grid_w, grid_h,
-        )
-        return snapshot.image
-
     img = Image.open(io.BytesIO(snapshot.image)).convert("RGBA")
     scale_x = img.width / grid_w
     scale_y = img.height / grid_h
 
-    def to_pixel(point: tuple[int, int]) -> tuple[float, float]:
-        # Le rendu de la lib retourne l'image verticalement (FLIP_TOP_BOTTOM):
-        # la ligne y de la grille devient la ligne (grid_h - 1 - y) de l'image.
-        x, y = point
-        return ((x + 0.5) * scale_x, (grid_h - 1 - y + 0.5) * scale_y)
+    best_name: str | None = None
+    best_pixels: list[tuple[float, float]] = []
+    best_score = 0.0
+    for name, to_pixel in _pixel_transforms(grid_w, grid_h, scale_x, scale_y).items():
+        pixels = [to_pixel(x, y) for x, y in snapshot.path]
+        score = _floor_score(img, pixels)
+        if score > best_score:
+            best_name, best_pixels, best_score = name, pixels, score
+
+    if best_name is None or best_score < _MIN_FLOOR_SCORE:
+        xs = [p[0] for p in snapshot.path]
+        ys = [p[1] for p in snapshot.path]
+        _LOGGER.debug(
+            "Aucune transformation trace->grille fiable (meilleur score %.2f): "
+            "x=[%s..%s] y=[%s..%s] vs grille %sx%s",
+            best_score, min(xs), max(xs), min(ys), max(ys), grid_w, grid_h,
+        )
+        return snapshot.image
+
+    _LOGGER.debug(
+        "Transformation trace->grille '%s' (score sol %.2f, %s points)",
+        best_name, best_score, len(snapshot.path),
+    )
 
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
+    if len(best_pixels) >= 2:
+        draw.line(best_pixels, fill=_PATH_COLOR, width=max(2, int(scale_x)))
 
-    pixels = [to_pixel(p) for p in in_bounds]
-    if len(pixels) >= 2:
-        draw.line(pixels, fill=_PATH_COLOR, width=max(2, int(scale_x)))
-
-    robot = snapshot.robot_position
-    if robot is not None and 0 <= robot[0] < grid_w and 0 <= robot[1] < grid_h:
-        cx, cy = to_pixel(robot)
+    if snapshot.robot_position is not None and best_pixels:
+        # La position du robot est le dernier point du trajet.
+        cx, cy = best_pixels[-1]
         radius = max(4.0, scale_x * 1.6)
         draw.ellipse(
             (cx - radius, cy - radius, cx + radius, cy + radius),
