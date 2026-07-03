@@ -30,14 +30,25 @@ Deploiement: via HACS (depot custom `pierrec18/ha_roborock_custom`, doit etre pu
 fallback possible en rsync SSH vers `/homeassistant/custom_components/roborock_custom/`
 (add-on "Advanced SSH & Web Terminal", host `homeassistant.local`).
 
-Overlay position/trajet (image.py `_compose_map`):
-- Hypothese non confirmee upstream: coordonnees de trace 02 01 = cellules de la
-  grille 01 01, meme origine, y inverse a l'affichage (le rendu lib fait un
-  FLIP_TOP_BOTTOM).
-- Garde-fou: si <90% des points du trajet tombent dans la grille, overlay saute
-  et bornes loguees en DEBUG (`Trace hors grille`) pour calibrer.
-- A VALIDER lors d'une session de nettoyage reelle (le robot n'emet des paquets
-  trace que pendant qu'il nettoie).
+Overlay position/trajet (image.py `_compose_map`) — GEOMETRIE ETABLIE EN LIVE:
+- Coordonnees de trace 02 01 en CENTIMETRES; cellules de grille = 5 cm.
+- Orientation validee (capture reelle, hypothese "A" choisie par l'utilisateur):
+  `gx = y/5 + offset_x`, `gy = -x/5 + offset_y` (offsets en espace image, le
+  rendu lib faisant deja un FLIP_TOP_BOTTOM).
+- offset d'origine propre a chaque carte -> balaye (max fraction de points sur
+  le sol), cache par (grid_w, grid_h). Sur la carte de test: offset ~ (113, 29)
+  pour grille 186x133.
+- Garde-fou: pas d'overlay tant que <15 points, ou si aucun offset n'atteint
+  60% de points sur le sol (log DEBUG `Calibration trace->grille echouee`).
+- Dimensions de grille = `map_data.image.dimensions.width/height` (PAS a la
+  racine de ImageData).
+- Outil de calibration: `map_debug.py` (connexion cloud locale via le token de
+  la config entry HA; option `--start-clean` pour capturer un trajet reel).
+  Sorties dans `map_debug_out/` (capture.json, candidates, rendu final).
+- Le robot n'emet des paquets trace que PENDANT un nettoyage; carte + pieces
+  sont poussees des le reveil/refresh.
+
+Version courante: 0.4.0, python-roborock 5.23.1.
 
 Points importants:
 - Ton robot detecte est `Roborock Q10 S5+` (`model=roborock.vacuum.ss07`, `pv=B01`).
