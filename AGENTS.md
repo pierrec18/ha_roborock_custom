@@ -23,6 +23,21 @@ L'integration HA fonctionne avec:
 - capteurs diagnostiques (battery/state/protocol)
 - support CLEAN_AREA Home Assistant (segments/pieces) pour appareils V1 **et B01/Q10**
 - entite image "Map" (carte PNG rendue, push-driven) pour B01/Q10
+- position live + trajet dessines sur la carte (overlay PIL, voir ci-dessous)
+- capteurs statistiques: progression (%), surface/duree session, totaux (B01)
+
+Deploiement: via HACS (depot custom `pierrec18/ha_roborock_custom`, doit etre public);
+fallback possible en rsync SSH vers `/homeassistant/custom_components/roborock_custom/`
+(add-on "Advanced SSH & Web Terminal", host `homeassistant.local`).
+
+Overlay position/trajet (image.py `_compose_map`):
+- Hypothese non confirmee upstream: coordonnees de trace 02 01 = cellules de la
+  grille 01 01, meme origine, y inverse a l'affichage (le rendu lib fait un
+  FLIP_TOP_BOTTOM).
+- Garde-fou: si <90% des points du trajet tombent dans la grille, overlay saute
+  et bornes loguees en DEBUG (`Trace hors grille`) pour calibrer.
+- A VALIDER lors d'une session de nettoyage reelle (le robot n'emet des paquets
+  trace que pendant qu'il nettoie).
 
 Points importants:
 - Ton robot detecte est `Roborock Q10 S5+` (`model=roborock.vacuum.ss07`, `pv=B01`).

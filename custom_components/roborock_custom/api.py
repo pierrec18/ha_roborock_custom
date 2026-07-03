@@ -50,6 +50,17 @@ class DeviceSnapshot:
     status: dict[str, Any]
 
 
+@dataclass(slots=True)
+class MapSnapshot:
+    """Rendered map plus live path/position, in map grid coordinates."""
+
+    image: bytes | None
+    path: list[tuple[int, int]]
+    robot_position: tuple[int, int] | None
+    grid_width: int | None
+    grid_height: int | None
+
+
 class RoborockCloudApi:
     """Manages one Roborock account session and device operations."""
 
@@ -494,6 +505,32 @@ class RoborockCloudApi:
             if props is None:
                 return None
             return props.map.image_content
+
+    async def async_get_map_snapshot(self, duid: str) -> MapSnapshot | None:
+        """Return map image + live path/position data for B01/Q10 devices."""
+        async with self._lock:
+            device = await self._get_device_locked(duid)
+            props = device.b01_q10_properties
+            if props is None:
+                return None
+            map_trait = props.map
+            grid_width: int | None = None
+            grid_height: int | None = None
+            image_data = getattr(map_trait.map_data, "image", None) if map_trait.map_data else None
+            if image_data is not None:
+                grid_width = getattr(image_data, "width", None)
+                grid_height = getattr(image_data, "height", None)
+            return MapSnapshot(
+                image=map_trait.image_content,
+                path=[(point.x, point.y) for point in map_trait.path],
+                robot_position=(
+                    (map_trait.robot_position.x, map_trait.robot_position.y)
+                    if map_trait.robot_position is not None
+                    else None
+                ),
+                grid_width=grid_width,
+                grid_height=grid_height,
+            )
 
     async def async_add_map_listener(self, duid: str, callback: Callable[[], None]) -> Callable[[], None]:
         """Register a callback fired when new map content is pushed.
