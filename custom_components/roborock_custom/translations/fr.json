@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion au compte Roborock",
+        "description": "Si l'intégration officielle Roborock est déjà connectée, seul l'email est requis et la session existante est réutilisée. Sinon saisis email + mot de passe.",
+        "data": {
+          "username": "Email",
+          "password": "Mot de passe"
+        }
+      },
+      "two_factor": {
+        "title": "Validation en deux étapes",
+        "description": "Entre le code reçu par email. Le composant évite de redemander un code automatiquement pour limiter le rate-limit.",
+        "data": {
+          "code": "Code email"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnecter le compte",
+        "description": "La session Roborock a expiré. Si l'intégration officielle est connectée, laisse le mot de passe vide pour réutiliser cette session. Sinon saisis ton mot de passe.",
+        "data": {
+          "password": "Mot de passe"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Identifiants invalides.",
+      "invalid_code": "Code invalide ou expiré.",
+      "cannot_connect": "Connexion au cloud Roborock impossible.",
+      "cannot_send_code": "Impossible de demander un nouveau code.",
+      "too_many_code_requests": "Trop de demandes de code. Attends un peu avant de réessayer.",
+      "official_auth_not_found": "Aucune session réutilisable trouvée dans l'intégration officielle Roborock. Saisis ton mot de passe.",
+      "unknown": "Erreur inattendue."
+    },
+    "abort": {
+      "already_configured": "Ce compte est déjà configuré.",
+      "invalid_auth": "Les données d'authentification sont invalides.",
+      "reauth_successful": "Ré-authentification réussie.",
+      "two_factor_context_missing": "Contexte 2FA manquant. Relance la configuration."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "Règle l'intervalle de rafraîchissement.",
+        "data": {
+          "scan_interval": "Intervalle de polling (secondes)"
+        }
+      }
+    }
+  }
+}

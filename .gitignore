@@ -1,0 +1,17 @@
+# Secrets - jetons d'authentification Roborock, ne jamais committer
+.roborock-auth.json
+.roborock-web-session.json
+
+# Environnements virtuels
+venv/
+venv311/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Claude Code - reglages locaux
+.claude/settings.local.json

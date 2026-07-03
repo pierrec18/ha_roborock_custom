@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Roborock account",
+        "description": "If the official Roborock integration is already connected, only the email is required and the existing session is reused. Otherwise enter email + password.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "two_factor": {
+        "title": "Two-factor validation",
+        "description": "Enter the code received by email. A code request is sent only once to avoid rate limits.",
+        "data": {
+          "code": "Email code"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect account",
+        "description": "Your Roborock session expired. If the official integration is connected, leave password empty to reuse that session. Otherwise enter your password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid credentials.",
+      "invalid_code": "Invalid or expired code.",
+      "cannot_connect": "Could not connect to Roborock cloud.",
+      "cannot_send_code": "Could not request a new code.",
+      "too_many_code_requests": "Too many code requests. Wait before trying again.",
+      "official_auth_not_found": "No reusable session found in the official Roborock integration. Enter your password.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "invalid_auth": "Authentication data is invalid.",
+      "reauth_successful": "Reauthentication successful.",
+      "two_factor_context_missing": "Two-factor context missing. Restart setup."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "Tune polling interval.",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  }
+}

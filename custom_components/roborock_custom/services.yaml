@@ -1,0 +1,71 @@
+roborock_clean_rooms:
+  target:
+    entity:
+      domain: vacuum
+      integration: roborock_custom
+  fields:
+    room_ids:
+      required: true
+      example: [16, 18]
+      selector:
+        object:
+    repeat:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 3
+          mode: box
+
+roborock_set_water_level:
+  target:
+    entity:
+      domain: vacuum
+      integration: roborock_custom
+  fields:
+    level:
+      required: true
+      example: "middle"
+      selector:
+        text:
+
+roborock_set_clean_mode:
+  target:
+    entity:
+      domain: vacuum
+      integration: roborock_custom
+  fields:
+    mode:
+      required: true
+      example: "onlymop"
+      selector:
+        text:
+
+roborock_b01_send:
+  target:
+    entity:
+      domain: vacuum
+      integration: roborock_custom
+  fields:
+    command:
+      required: true
+      example: "REQUEST_DPS"
+      selector:
+        text:
+    params:
+      required: false
+      example: "{\"cmd\": 1}"
+      selector:
+        text:
+    refresh_after:
+      required: false
+      default: true
+      selector:
+        boolean:
+
+roborock_b01_request_dps:
+  target:
+    entity:
+      domain: vacuum
+      integration: roborock_custom

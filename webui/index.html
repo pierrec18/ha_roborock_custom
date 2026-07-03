@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roborock Control</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --ink: #18212b;
+      --muted: #5f6b78;
+      --line: #d8dee5;
+      --primary: #0b8f7a;
+      --primary-ink: #ffffff;
+      --accent: #e57b20;
+      --danger: #c0392b;
+      --ok: #27ae60;
+      --mono: "SF Mono", "Menlo", monospace;
+      --sans: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at -10% -20%, #d7efe9 0%, transparent 60%),
+        radial-gradient(1000px 600px at 120% 20%, #fde8d3 0%, transparent 50%),
+        var(--bg);
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .top h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0.3px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #9ba7b4;
+    }
+
+    .dot.ok { background: var(--ok); }
+    .dot.off { background: var(--danger); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 1px 2px rgba(24, 33, 43, 0.04);
+    }
+
+    .card h2 {
+      margin: 0 0 12px 0;
+      font-size: 15px;
+      letter-spacing: 0.2px;
+      color: #102a43;
+    }
+
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input, select, button, textarea {
+      font: inherit;
+    }
+
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 10px 11px;
+      margin-bottom: 10px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: transform .06s ease, opacity .2s ease;
+      background: #edf2f7;
+      color: #243b53;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+    button.primary { background: var(--primary); color: var(--primary-ink); }
+    button.warn { background: var(--accent); color: #1d1308; }
+    button.ghost { border-color: var(--line); background: #fff; }
+
+    .status-pre, .map-pre, .log-pre {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fafcfe;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.45;
+      min-height: 100px;
+      white-space: pre-wrap;
+      overflow: auto;
+    }
+
+    .log-pre { min-height: 140px; max-height: 300px; }
+
+    .map-img {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #f8fbfc;
+      margin-bottom: 10px;
+      display: none;
+    }
+
+    .muted { color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 950px) {
+      .span-4, .span-6, .span-8 { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>Roborock Local Console</h1>
+      <div class="chip"><span id="state-dot" class="dot off"></span><span id="state-text">Deconnecte</span></div>
+    </div>
+
+    <div class="grid">
+      <section class="card span-4">
+        <h2>Connexion</h2>
+        <label for="username">Email</label>
+        <input id="username" placeholder="pierre@example.com">
+
+        <label for="password">Mot de passe</label>
+        <input id="password" type="password" placeholder="Optionnel si code OTP">
+
+        <label for="code">Code OTP</label>
+        <input id="code" placeholder="123456">
+
+        <div class="row">
+          <button id="send-code" class="warn">Envoyer code</button>
+          <button id="login" class="primary">Login</button>
+          <button id="logout" class="ghost">Logout</button>
+        </div>
+        <p class="muted">Session persistee cote serveur dans <code>.roborock-web-session.json</code>.</p>
+      </section>
+
+      <section class="card span-4">
+        <h2>Appareils</h2>
+        <label for="devices">Robot</label>
+        <select id="devices"></select>
+        <div class="row">
+          <button id="refresh-devices" class="ghost">Rafraichir liste</button>
+          <button id="refresh-status" class="ghost">Rafraichir status</button>
+          <button id="refresh-map" class="ghost">Rafraichir carte</button>
+        </div>
+        <div id="devices-info" class="status-pre"></div>
+      </section>
+
+      <section class="card span-4">
+        <h2>Commandes</h2>
+        <div class="row">
+          <button data-cmd="start" class="primary cmd-btn">Start</button>
+          <button data-cmd="pause" class="cmd-btn">Pause</button>
+          <button data-cmd="stop" class="cmd-btn">Stop</button>
+          <button data-cmd="dock" class="cmd-btn">Dock</button>
+          <button data-cmd="empty" class="cmd-btn">Empty Dustbin</button>
+        </div>
+        <p class="muted">"Empty Dustbin" est principalement B01/Q10.</p>
+        <div id="last-command" class="status-pre"></div>
+      </section>
+
+      <section class="card span-6">
+        <h2>Status</h2>
+        <div id="status" class="status-pre"></div>
+      </section>
+
+      <section class="card span-6">
+        <h2>Carte</h2>
+        <img id="map-image" class="map-img" alt="map">
+        <div id="map-json" class="map-pre"></div>
+      </section>
+
+      <section class="card span-12">
+        <h2>Logs</h2>
+        <div id="logs" class="log-pre"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const els = {
+      username: document.getElementById("username"),
+      password: document.getElementById("password"),
+      code: document.getElementById("code"),
+      devices: document.getElementById("devices"),
+      devicesInfo: document.getElementById("devices-info"),
+      stateDot: document.getElementById("state-dot"),
+      stateText: document.getElementById("state-text"),
+      status: document.getElementById("status"),
+      mapImage: document.getElementById("map-image"),
+      mapJson: document.getElementById("map-json"),
+      logs: document.getElementById("logs"),
+      lastCommand: document.getElementById("last-command"),
+    };
+
+    function log(msg) {
+      const ts = new Date().toLocaleTimeString();
+      els.logs.textContent = `[${ts}] ${msg}\n` + els.logs.textContent;
+    }
+
+    async function api(path, { method = "GET", body } = {}) {
+      const options = { method, headers: {} };
+      if (body !== undefined) {
+        options.headers["Content-Type"] = "application/json";
+        options.body = JSON.stringify(body);
+      }
+      const response = await fetch(path, options);
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch (_) {}
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      return payload;
+    }
+
+    function selectedDeviceId() {
+      return els.devices.value || "";
+    }
+
+    function updateConnectionChip(state) {
+      const online = state.logged_in && state.connected;
+      els.stateDot.className = "dot " + (online ? "ok" : "off");
+      els.stateText.textContent = online ? `Connecte (${state.username})` : "Deconnecte";
+    }
+
+    function renderDevices(devices) {
+      els.devices.innerHTML = "";
+      for (const d of devices) {
+        const o = document.createElement("option");
+        o.value = d.duid;
+        o.textContent = `${d.name} (${d.model})`;
+        els.devices.appendChild(o);
+      }
+      if (devices.length === 0) {
+        const o = document.createElement("option");
+        o.value = "";
+        o.textContent = "Aucun appareil";
+        els.devices.appendChild(o);
+      }
+      els.devicesInfo.textContent = JSON.stringify(devices, null, 2);
+    }
+
+    async function refreshState() {
+      try {
+        const state = await api("/api/state");
+        updateConnectionChip(state);
+        renderDevices(state.devices || []);
+        if (state.username) {
+          els.username.value = state.username;
+        }
+      } catch (err) {
+        log(`state error: ${err.message}`);
+      }
+    }
+
+    async function refreshStatus() {
+      const deviceId = selectedDeviceId();
+      if (!deviceId) return;
+      try {
+        const data = await api(`/api/status?device_id=${encodeURIComponent(deviceId)}`);
+        els.status.textContent = JSON.stringify(data.status, null, 2);
+      } catch (err) {
+        els.status.textContent = err.message;
+        log(`status error: ${err.message}`);
+      }
+    }
+
+    async function refreshMap() {
+      const deviceId = selectedDeviceId();
+      if (!deviceId) return;
+      try {
+        const data = await api(`/api/map?device_id=${encodeURIComponent(deviceId)}`);
+        const map = data.map || {};
+        if (map.mode === "v1" && map.image_base64) {
+          els.mapImage.src = `data:image/png;base64,${map.image_base64}`;
+          els.mapImage.style.display = "block";
+        } else {
+          els.mapImage.removeAttribute("src");
+          els.mapImage.style.display = "none";
+        }
+        els.mapJson.textContent = JSON.stringify(map, null, 2);
+      } catch (err) {
+        els.mapImage.removeAttribute("src");
+        els.mapImage.style.display = "none";
+        els.mapJson.textContent = err.message;
+        log(`map error: ${err.message}`);
+      }
+    }
+
+    async function login() {
+      try {
+        await api("/api/login", {
+          method: "POST",
+          body: {
+            username: els.username.value.trim(),
+            password: els.password.value,
+            code: els.code.value.trim(),
+          },
+        });
+        log("login success");
+        await api("/api/devices/refresh", { method: "POST" });
+        await refreshState();
+        await refreshStatus();
+      } catch (err) {
+        log(`login error: ${err.message}`);
+      }
+    }
+
+    async function logout() {
+      try {
+        await api("/api/logout", { method: "POST" });
+        log("logout");
+        els.status.textContent = "";
+        els.mapJson.textContent = "";
+        els.mapImage.removeAttribute("src");
+        els.mapImage.style.display = "none";
+        await refreshState();
+      } catch (err) {
+        log(`logout error: ${err.message}`);
+      }
+    }
+
+    async function sendCode() {
+      try {
+        await api("/api/send-code", {
+          method: "POST",
+          body: { username: els.username.value.trim() },
+        });
+        log("code envoye");
+      } catch (err) {
+        log(`send-code error: ${err.message}`);
+      }
+    }
+
+    async function runCommand(command) {
+      const deviceId = selectedDeviceId();
+      if (!deviceId) {
+        log("aucun device selectionne");
+        return;
+      }
+      try {
+        const data = await api("/api/command", {
+          method: "POST",
+          body: { device_id: deviceId, command },
+        });
+        els.lastCommand.textContent = JSON.stringify(data.result, null, 2);
+        log(`command ${command} ok`);
+        await refreshStatus();
+      } catch (err) {
+        els.lastCommand.textContent = err.message;
+        log(`command ${command} error: ${err.message}`);
+      }
+    }
+
+    document.getElementById("send-code").addEventListener("click", sendCode);
+    document.getElementById("login").addEventListener("click", login);
+    document.getElementById("logout").addEventListener("click", logout);
+    document.getElementById("refresh-devices").addEventListener("click", async () => {
+      try {
+        await api("/api/devices/refresh", { method: "POST" });
+        await refreshState();
+        log("devices refreshed");
+      } catch (err) {
+        log(`devices refresh error: ${err.message}`);
+      }
+    });
+    document.getElementById("refresh-status").addEventListener("click", refreshStatus);
+    document.getElementById("refresh-map").addEventListener("click", refreshMap);
+    document.querySelectorAll(".cmd-btn").forEach((button) => {
+      button.addEventListener("click", () => runCommand(button.dataset.cmd));
+    });
+    els.devices.addEventListener("change", async () => {
+      await refreshStatus();
+      await refreshMap();
+    });
+
+    refreshState();
+    setInterval(async () => {
+      if (!selectedDeviceId()) return;
+      await refreshStatus();
+    }, 10000);
+  </script>
+</body>
+</html>
