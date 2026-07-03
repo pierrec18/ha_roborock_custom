@@ -627,11 +627,33 @@ class RoborockCloudApi:
             await props.refresh()
             await asyncio.sleep(_B01_STATUS_SETTLE_SECONDS)
             status = props.status
-            payload = status.as_dict()
+            # NB: status.as_dict() produit des cles camelCase (cleanArea, ...);
+            # les entites lisent du snake_case, donc on construit le payload
+            # explicitement depuis les attributs du trait.
+            payload = {
+                "battery": status.battery,
+                "clean_area": status.clean_area,
+                "clean_time": status.clean_time,
+                "cleaning_progress": status.cleaning_progress,
+                "total_clean_area": status.total_clean_area,
+                "total_clean_time": status.total_clean_time,
+                "total_clean_count": status.total_clean_count,
+                "fault": status.fault,
+                "mop_state": status.mop_state,
+                "clean_task_type": (
+                    status.clean_task_type.value if status.clean_task_type is not None else None
+                ),
+            }
+            payload = {key: value for key, value in payload.items() if value is not None}
             payload["state_name"] = status.status.value if status.status is not None else None
             clean_area = status.clean_area
-            if isinstance(clean_area, (int, float)) and clean_area > 10000:
-                payload["square_meter_clean_area"] = round(float(clean_area) / 1_000_000, 2)
+            if isinstance(clean_area, (int, float)):
+                # Le Q10 remonte deja des m2 (valeurs faibles); garder l'heuristique
+                # mm2 pour d'eventuelles variantes de firmware.
+                if clean_area > 10000:
+                    payload["square_meter_clean_area"] = round(float(clean_area) / 1_000_000, 2)
+                else:
+                    payload["square_meter_clean_area"] = float(clean_area)
             payload["fan_speed_name"] = status.fan_level.value if status.fan_level is not None else None
             payload["fan_speed_options"] = [lvl.value for lvl in YXFanLevel if lvl.name != "UNKNOWN"]
             payload["water_mode_name"] = status.water_level.value if status.water_level is not None else None

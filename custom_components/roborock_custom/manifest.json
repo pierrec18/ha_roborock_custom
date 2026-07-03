@@ -11,5 +11,5 @@
   "loggers": ["roborock"],
   "requirements": ["python-roborock==5.22.0"],
   "single_config_entry": true,
-  "version": "0.3.0"
+  "version": "0.3.1"
 }

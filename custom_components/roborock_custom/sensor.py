@@ -248,7 +248,9 @@ class RoborockTotalCleanTimeSensor(RoborockBaseSensor):
 
     _attr_name = "Total Clean Time"
     _attr_device_class = SensorDeviceClass.DURATION
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    # Le Q10 remonte le total en minutes (verifie: 6275 ~ 104,6 h, coherent
+    # avec l'integration native), contrairement a clean_time en secondes.
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_suggested_unit_of_measurement = UnitOfTime.HOURS
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_entity_category = EntityCategory.DIAGNOSTIC
