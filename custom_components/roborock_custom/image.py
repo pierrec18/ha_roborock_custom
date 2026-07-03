@@ -21,17 +21,25 @@ from .coordinator import RoborockDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Les coordonnees de trace B01 ne sont pas documentees (int16 signes, origine
-# inconnue — observe: valeurs negatives, donc pas le coin de la grille). On
-# teste plusieurs transformations candidates et on garde celle dont les points
-# tombent majoritairement sur du sol (pixels de piece, ni exterieur ni mur).
-_MIN_FLOOR_SCORE = 0.5
+# Geometrie des traces B01/Q10, etablie par capture live (voir map_debug.py):
+# les coordonnees de trace sont en centimetres, les cellules de la grille font
+# 5 cm, et l'orientation est (gx = y/5 + offset_x, gy = -x/5 + offset_y) — le
+# rendu de la lib etant deja retourne verticalement, ces offsets sont en espace
+# image. L'origine (0,0) des traces est propre a chaque carte, donc l'offset est
+# calcule par balayage (score = fraction de points tombant sur du sol) et mis en
+# cache tant que les dimensions de la grille ne changent pas.
+_TRACE_UNIT_CM = 5.0
+_MIN_FLOOR_SCORE = 0.6
+# Trop peu de points -> l'offset est sous-contraint (beaucoup de positions
+# donnent un score parfait); attendre d'avoir un trajet significatif avant de
+# figer une calibration.
+_MIN_CALIB_POINTS = 15
 
 # Couleurs du rendu de B01Q10MapParser (voir _build_palette dans la lib).
 _OUTSIDE_COLOR = (28, 30, 38)
 _WALL_COLOR = (235, 235, 240)
 
-_PATH_COLOR = (255, 255, 255, 170)
+_PATH_COLOR = (255, 255, 255, 200)
 _ROBOT_FILL = (66, 165, 245, 255)
 _ROBOT_OUTLINE = (255, 255, 255, 255)
 
@@ -47,53 +55,64 @@ async def async_setup_entry(hass: HomeAssistant, entry: RoborockConfigEntry, asy
     async_add_entities(entities)
 
 
-def _pixel_transforms(grid_w: int, grid_h: int, scale_x: float, scale_y: float):
-    """Candidate trace→pixel transforms: origine {coin, centre} × y {inverse, direct}.
-
-    Le rendu de la lib retourne l'image verticalement (FLIP_TOP_BOTTOM), d'ou
-    les variantes en y. Retourne {nom: fonction (x, y) -> (px, py)}.
-    """
-    half_w = grid_w / 2
-    half_h = grid_h / 2
-
-    def make(offset_x: float, offset_y: float, flip_y: bool):
-        def to_pixel(x: float, y: float) -> tuple[float, float]:
-            gx = x + offset_x
-            gy = y + offset_y
-            py = (grid_h - 1 - gy + 0.5) if flip_y else (gy + 0.5)
-            return ((gx + 0.5) * scale_x, py * scale_y)
-
-        return to_pixel
-
-    return {
-        "corner_yflip": make(0, 0, True),
-        "corner_ydirect": make(0, 0, False),
-        "center_yflip": make(half_w, half_h, True),
-        "center_ydirect": make(half_w, half_h, False),
-    }
+def _base_grid_coords(path: list[tuple[int, int]]) -> list[tuple[float, float]]:
+    """Trace (cm) -> coordonnees grille sans offset (orientation Q10 validee)."""
+    return [(y / _TRACE_UNIT_CM, -x / _TRACE_UNIT_CM) for x, y in path]
 
 
-def _floor_score(img: Image.Image, pixels: list[tuple[float, float]]) -> float:
-    """Fraction of points landing on floor pixels (inside a room)."""
-    if not pixels:
-        return 0.0
+def _densify(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Interpole le long du trajet pour que le score detecte les traversees de mur."""
+    if len(points) < 2:
+        return list(points)
+    dense: list[tuple[float, float]] = []
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        steps = max(2, int(max(abs(bx - ax), abs(by - ay)) * 2))
+        for i in range(steps + 1):
+            f = i / steps
+            dense.append((ax + (bx - ax) * f, ay + (by - ay) * f))
+    return dense
+
+
+def _build_floor_lookup(img: Image.Image, grid_w: int, grid_h: int):
+    """Retourne une fonction (gx, gy) -> bool disant si la cellule est du sol."""
     rgb = img.convert("RGB")
-    hits = 0
-    for px, py in pixels:
-        if not (0 <= px < rgb.width and 0 <= py < rgb.height):
-            continue
-        color = rgb.getpixel((int(px), int(py)))
-        if color != _OUTSIDE_COLOR and color != _WALL_COLOR:
-            hits += 1
-    return hits / len(pixels)
+    scale_x = rgb.width / grid_w
+    scale_y = rgb.height / grid_h
+    px = rgb.load()
+
+    def is_floor(gx: int, gy: int) -> bool:
+        if not (0 <= gx < grid_w and 0 <= gy < grid_h):
+            return False
+        color = px[int((gx + 0.5) * scale_x), int((gy + 0.5) * scale_y)]
+        return color != _OUTSIDE_COLOR and color != _WALL_COLOR
+
+    return is_floor
 
 
-def _compose_map(snapshot: MapSnapshot) -> bytes | None:
+def _find_offset(base: list[tuple[float, float]], grid_w: int, grid_h: int, is_floor) -> tuple[int, int, float]:
+    """Balaye l'offset (borne au bounding box du trajet) maximisant le score sol."""
+    dense = _densify(base)
+    xs = [b[0] for b in base]
+    ys = [b[1] for b in base]
+    dx_lo, dx_hi = int(-min(xs)), int(grid_w - 1 - max(xs))
+    dy_lo, dy_hi = int(-min(ys)), int(grid_h - 1 - max(ys))
+
+    best = (0, 0, 0.0)
+    for dx in range(dx_lo, dx_hi + 1):
+        for dy in range(dy_lo, dy_hi + 1):
+            hits = sum(1 for bx, by in dense if is_floor(round(bx + dx), round(by + dy)))
+            score = hits / len(dense)
+            if score > best[2]:
+                best = (dx, dy, score)
+    return best
+
+
+def _compose_map(snapshot: MapSnapshot, calib_cache: dict) -> bytes | None:
     """Draw the live path and robot position onto the rendered map PNG.
 
-    Runs in the executor (PIL is CPU-bound). The trace→grid transform is
-    auto-calibrated: candidate transforms are scored by how many path points
-    land on floor pixels, and the overlay is skipped when none fits.
+    Runs in the executor (PIL is CPU-bound). The per-map offset is searched once
+    and cached in ``calib_cache`` (keyed by grid dimensions); the overlay is
+    skipped when the trace does not fit the floor (guard against a bad map).
     """
     if snapshot.image is None:
         return None
@@ -106,38 +125,50 @@ def _compose_map(snapshot: MapSnapshot) -> bytes | None:
     scale_x = img.width / grid_w
     scale_y = img.height / grid_h
 
-    best_name: str | None = None
-    best_pixels: list[tuple[float, float]] = []
-    best_score = 0.0
-    for name, to_pixel in _pixel_transforms(grid_w, grid_h, scale_x, scale_y).items():
-        pixels = [to_pixel(x, y) for x, y in snapshot.path]
-        score = _floor_score(img, pixels)
-        if score > best_score:
-            best_name, best_pixels, best_score = name, pixels, score
+    base = _base_grid_coords(snapshot.path)
+    is_floor = _build_floor_lookup(img, grid_w, grid_h)
 
-    if best_name is None or best_score < _MIN_FLOOR_SCORE:
-        xs = [p[0] for p in snapshot.path]
-        ys = [p[1] for p in snapshot.path]
-        _LOGGER.debug(
-            "Aucune transformation trace->grille fiable (meilleur score %.2f): "
-            "x=[%s..%s] y=[%s..%s] vs grille %sx%s",
-            best_score, min(xs), max(xs), min(ys), max(ys), grid_w, grid_h,
-        )
-        return snapshot.image
+    cache_key = (grid_w, grid_h)
+    cached = calib_cache.get(cache_key)
+    offset: tuple[int, int] | None = None
+    if cached is not None:
+        # Reutiliser l'offset connu s'il place encore le trajet courant sur le sol.
+        dx, dy = cached
+        dense = _densify(base)
+        hits = sum(1 for bx, by in dense if is_floor(round(bx + dx), round(by + dy)))
+        if hits / len(dense) >= _MIN_FLOOR_SCORE:
+            offset = cached
 
-    _LOGGER.debug(
-        "Transformation trace->grille '%s' (score sol %.2f, %s points)",
-        best_name, best_score, len(snapshot.path),
-    )
+    if offset is None:
+        if len(base) < _MIN_CALIB_POINTS:
+            # Pas encore assez de trajet pour calibrer de maniere fiable.
+            return snapshot.image
+        dx, dy, score = _find_offset(base, grid_w, grid_h, is_floor)
+        if score < _MIN_FLOOR_SCORE:
+            xs = [p[0] for p in snapshot.path]
+            ys = [p[1] for p in snapshot.path]
+            _LOGGER.debug(
+                "Calibration trace->grille echouee (meilleur score %.2f): "
+                "x=[%s..%s] y=[%s..%s] vs grille %sx%s",
+                score, min(xs), max(xs), min(ys), max(ys), grid_w, grid_h,
+            )
+            return snapshot.image
+        offset = (dx, dy)
+        calib_cache.clear()
+        calib_cache[cache_key] = offset
+        _LOGGER.debug("Calibration trace->grille offset=%s (score %.2f)", offset, score)
+
+    dx, dy = offset
+    pixels = [((bx + dx + 0.5) * scale_x, (by + dy + 0.5) * scale_y) for bx, by in base]
 
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    if len(best_pixels) >= 2:
-        draw.line(best_pixels, fill=_PATH_COLOR, width=max(2, int(scale_x)))
+    if len(pixels) >= 2:
+        draw.line(pixels, fill=_PATH_COLOR, width=max(2, int(scale_x)))
 
-    if snapshot.robot_position is not None and best_pixels:
+    if snapshot.robot_position is not None and pixels:
         # La position du robot est le dernier point du trajet.
-        cx, cy = best_pixels[-1]
+        cx, cy = pixels[-1]
         radius = max(4.0, scale_x * 1.6)
         draw.ellipse(
             (cx - radius, cy - radius, cx + radius, cy + radius),
@@ -166,6 +197,8 @@ class RoborockMapImageEntity(CoordinatorEntity[RoborockDataUpdateCoordinator], I
         self._duid = duid
         self._attr_unique_id = f"{duid}_map"
         self._last_map: MapSnapshot | None = None
+        # offset de calibration trace->grille, mis en cache par dimensions de carte
+        self._calib_cache: dict = {}
 
     @property
     def _snapshot(self) -> DeviceSnapshot | None:
@@ -210,7 +243,9 @@ class RoborockMapImageEntity(CoordinatorEntity[RoborockDataUpdateCoordinator], I
             if snapshot is None:
                 return None
             self._last_map = snapshot
-            return await self.hass.async_add_executor_job(_compose_map, snapshot)
+            return await self.hass.async_add_executor_job(
+                _compose_map, snapshot, self._calib_cache
+            )
         except Exception as err:  # noqa: BLE001 - image fetch must not raise
             _LOGGER.debug("Lecture de la carte impossible pour %s: %s", self._duid, err)
             return None

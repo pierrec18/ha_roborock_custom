@@ -517,9 +517,12 @@ class RoborockCloudApi:
             grid_width: int | None = None
             grid_height: int | None = None
             image_data = getattr(map_trait.map_data, "image", None) if map_trait.map_data else None
-            if image_data is not None:
-                grid_width = getattr(image_data, "width", None)
-                grid_height = getattr(image_data, "height", None)
+            # ImageData (vacuum-map-parser-base) range les dimensions de la
+            # grille dans .dimensions, pas a la racine.
+            dimensions = getattr(image_data, "dimensions", None)
+            if dimensions is not None:
+                grid_width = getattr(dimensions, "width", None)
+                grid_height = getattr(dimensions, "height", None)
             return MapSnapshot(
                 image=map_trait.image_content,
                 path=[(point.x, point.y) for point in map_trait.path],
