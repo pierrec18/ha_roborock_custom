@@ -16,3 +16,6 @@ __pycache__/
 # Claude Code - reglages locaux
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Sorties d'analyse carte (regenerables)
+map_debug_out/

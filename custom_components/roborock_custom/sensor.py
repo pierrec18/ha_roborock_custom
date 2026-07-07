@@ -29,6 +29,7 @@ async def async_setup_entry(hass, entry: RoborockConfigEntry, async_add_entities
         entities.append(RoborockMopWaterLevelSensor(runtime_data, duid))
         entities.append(RoborockCleanAreaSensor(runtime_data, duid))
         entities.append(RoborockCleanTimeSensor(runtime_data, duid))
+        entities.append(RoborockErrorSensor(runtime_data, duid))
         if snapshot.protocol == "b01_q10":
             entities.append(RoborockCleaningProgressSensor(runtime_data, duid))
             entities.append(RoborockTotalCleanAreaSensor(runtime_data, duid))
@@ -157,6 +158,39 @@ class RoborockMopWaterLevelSensor(RoborockBaseSensor):
         if value is None:
             return "unknown"
         return str(value)
+
+
+class RoborockErrorSensor(RoborockBaseSensor):
+    """Current fault/error of the vacuum (decoded name)."""
+
+    _attr_name = "Error"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, runtime_data: RoborockRuntimeData, duid: str) -> None:
+        super().__init__(runtime_data, duid)
+        self._attr_unique_id = f"{duid}_error"
+
+    @property
+    def native_value(self):
+        snapshot = self._snapshot
+        if snapshot is None:
+            return None
+        status = snapshot.status
+        # B01/Q10: nom decode via YXFault (api.py); V1: error_code_name.
+        name = status.get("fault_name") or status.get("error_code_name")
+        if name is not None:
+            return str(name)
+        fault = status.get("fault")
+        if isinstance(fault, int):
+            return "none" if fault == 0 else str(fault)
+        return "none"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        snapshot = self._snapshot
+        if snapshot is None:
+            return {}
+        return {"fault_code": snapshot.status.get("fault")}
 
 
 class RoborockCleaningProgressSensor(RoborockBaseSensor):

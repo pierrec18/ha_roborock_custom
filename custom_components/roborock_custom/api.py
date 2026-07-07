@@ -13,7 +13,7 @@ from typing import Any
 import aiohttp
 from roborock import RoborockCommand
 from roborock.data import UserData
-from roborock.data.b01_q10.b01_q10_code_mappings import B01_Q10_DP, YXCleanType, YXFanLevel, YXWaterLevel
+from roborock.data.b01_q10.b01_q10_code_mappings import B01_Q10_DP, YXCleanType, YXFanLevel, YXFault, YXWaterLevel
 from roborock.devices.cache import InMemoryCache
 from roborock.devices.device import RoborockDevice
 from roborock.devices.device_manager import DeviceManager, UserParams, create_device_manager
@@ -52,13 +52,14 @@ class DeviceSnapshot:
 
 @dataclass(slots=True)
 class MapSnapshot:
-    """Rendered map plus live path/position, in map grid coordinates."""
+    """Rendered map plus live path/position, in raw trace/grid coordinates."""
 
     image: bytes | None
     path: list[tuple[int, int]]
     robot_position: tuple[int, int] | None
     grid_width: int | None
     grid_height: int | None
+    rooms: list[dict[str, Any]]
 
 
 class RoborockCloudApi:
@@ -523,6 +524,10 @@ class RoborockCloudApi:
             if dimensions is not None:
                 grid_width = getattr(dimensions, "width", None)
                 grid_height = getattr(dimensions, "height", None)
+            rooms = [
+                {"id": room.id, "name": room.name or f"Room {room.id}", "pixel_value": room.pixel_value}
+                for room in map_trait.rooms
+            ]
             return MapSnapshot(
                 image=map_trait.image_content,
                 path=[(point.x, point.y) for point in map_trait.path],
@@ -533,6 +538,7 @@ class RoborockCloudApi:
                 ),
                 grid_width=grid_width,
                 grid_height=grid_height,
+                rooms=rooms,
             )
 
     async def async_add_map_listener(self, duid: str, callback: Callable[[], None]) -> Callable[[], None]:
@@ -663,6 +669,9 @@ class RoborockCloudApi:
             payload["water_mode_options"] = [lvl.value for lvl in YXWaterLevel if lvl.name != "UNKNOWN"]
             payload["mop_mode_name"] = status.clean_mode.value if status.clean_mode is not None else None
             payload["mop_mode_options"] = [mode.value for mode in YXCleanType if mode.name != "UNKNOWN"]
+            if status.fault is not None:
+                fault = YXFault.from_code_optional(status.fault)
+                payload["fault_name"] = fault.value if fault is not None else None
             payload["rooms"] = [
                 {"segment_id": room.id, "name": room.name or f"Room {room.id}"}
                 for room in props.map.rooms

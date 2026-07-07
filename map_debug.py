@@ -90,6 +90,8 @@ async def main() -> int:
     wait_seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 60.0
     start_clean = "--start-clean" in sys.argv
     min_points = 40
+    if "--min-points" in sys.argv:
+        min_points = int(sys.argv[sys.argv.index("--min-points") + 1])
     entry = json.loads(entry_path.read_text())
     user_data = UserData.from_dict(entry["user_data"])
 

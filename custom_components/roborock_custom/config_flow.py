@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -16,6 +17,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_CODE,
     CONF_DEVICE_IDENTIFIER,
+    CONF_MAP_CALIBRATION,
     CONF_SCAN_INTERVAL,
     CONF_USER_DATA,
     DEFAULT_SCAN_INTERVAL,
@@ -273,10 +275,22 @@ class RoborockCustomOptionsFlow(config_entries.OptionsFlowWithReload):
     """Manage options for the Roborock custom integration."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            options: dict[str, Any] = {CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]}
+            raw_cal = str(user_input.get(CONF_MAP_CALIBRATION, "")).strip()
+            if raw_cal:
+                calibration = self._parse_calibration(raw_cal)
+                if calibration is None:
+                    errors["base"] = "invalid_calibration"
+                else:
+                    options[CONF_MAP_CALIBRATION] = calibration
+            if not errors:
+                return self.async_create_entry(title="", data=options)
 
         interval_default = self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        cal_default = self.config_entry.options.get(CONF_MAP_CALIBRATION)
+        cal_text = json.dumps(cal_default) if isinstance(cal_default, dict) else ""
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -284,7 +298,34 @@ class RoborockCustomOptionsFlow(config_entries.OptionsFlowWithReload):
                     vol.Required(CONF_SCAN_INTERVAL, default=interval_default): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
-                    )
+                    ),
+                    # Calibration manuelle trace->carte (JSON), ex:
+                    # {"unit": 12.5, "off_x": 187, "off_y": 124, "sign_x": -1, "sign_y": -1}
+                    # Vide = pas d'overlay robot/trajet sur la carte.
+                    vol.Optional(CONF_MAP_CALIBRATION, default=cal_text): str,
                 }
             ),
+            errors=errors,
         )
+
+    @staticmethod
+    def _parse_calibration(raw: str) -> dict[str, Any] | None:
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        try:
+            result = {
+                "unit": float(data["unit"]),
+                "off_x": float(data["off_x"]),
+                "off_y": float(data["off_y"]),
+                "sign_x": -1 if int(data.get("sign_x", -1)) < 0 else 1,
+                "sign_y": -1 if int(data.get("sign_y", -1)) < 0 else 1,
+            }
+        except (KeyError, TypeError, ValueError):
+            return None
+        if result["unit"] == 0:
+            return None
+        return result

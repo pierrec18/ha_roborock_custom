@@ -146,15 +146,61 @@ du paquet carte.
 - Erreur `too many codes`:
   - rate-limit serveur Roborock, attendre avant nouvelle demande.
 
+## CALIBRATION TRACE->CARTE Q10 : conclusion (2026-07-06)
+Investigation approfondie de la superposition trajet/position sur la carte.
+RESULTAT: il n'existe PAS de transformation trace->carte derivable pour le Q10.
+- Le paquet carte 01 01 ne contient AUCUNE origine (le parser met top=0,left=0);
+  la position de la grille dans le repere du robot n'est stockee nulle part.
+- Le projet de reference `roborock-qseries-map-bridge` (credite par le parser
+  python-roborock) utilise lui aussi une CALIBRATION MANUELLE par installation.
+- Geometrie partiellement etablie en live (capture 160 pts, appli Roborock comme
+  verite terrain):
+  - la carte rendue par la lib est MIROIR VERTICAL par rapport a la realite/appli
+    (la lib applique un FLIP_TOP_BOTTOM a re-inverser pour l'affichage);
+  - orientation du trace validee par l'utilisateur = `(-x, -y)`;
+  - echelle ~ 12-12.5 unites de trace par cellule (NON confirmee, l'utilisateur
+    pensait >15; incoherence non tranchee);
+  - l'offset est PROPRE A CHAQUE CARTE (position du dock) et doit etre calibre.
+- DECISION UTILISATEUR: la position/trajet du robot se fera via CALIBRATION
+  MANUELLE plus tard (workflow standard de la carte Lovelace xiaomi-vacuum-map-card),
+  PAS par auto-calibration dans l'integration.
+- L'overlay ad hoc de la v0.4.0 (image.py `_compose_map`) est donc NON FIABLE
+  et devra etre retire/neutralise avant tout nouveau build.
+- Outils de debug crees pour la future session de calibration (a la racine):
+  - `map_debug.py` (capture cloud live; option `--start-clean`, `--min-points`,
+    `--render`), `map_calibrate.py` (analyse 8 orientations x echelle + ambiguite).
+  - Fixtures/captures dans `map_debug_out/` (capture.json, map_plain.png, rendus).
+
+## Etat au 2026-07-07 (v0.5.0 construite)
+- python-roborock **5.27.0** (manifest). Version 0.5.0.
+- Nouveau module PUR `map_render.py` (testable hors HA): flip vertical de la carte,
+  `room_regions()` (bbox/centre pixel par piece), `render_with_overlay()` (overlay
+  robot/trajet SEULEMENT si calibration fournie), `calibration_from_options()`.
+- `image.py` REECRIT: carte des pieces remise a l'endroit, PLUS d'overlay auto
+  (l'ancien `_compose_map`/calibration auto est SUPPRIME). Overlay uniquement si
+  `map_calibration` present dans les options.
+- `camera.py` NOUVEAU: entite camera pour xiaomi-vacuum-map-card; attribut `rooms`
+  (regions pixel) pour les `predefined_selections` (clic->nettoyage, identity
+  calibration). Attributs `robot_raw_x/y` pour la calibration manuelle.
+- `sensor.py`: capteur "Error" (YXFault decode; ex. 5 = main_brush_stuck).
+- `config_flow.py` OptionsFlow: champ JSON "map_calibration" (optionnel) +
+  erreur `invalid_calibration`. `const.py`: `CONF_MAP_CALIBRATION`, Platform.CAMERA.
+- Tests: `tests/test_map_render.py` (7 tests, fixtures reelles dans tests/fixtures/).
+- Calibration trace->carte: valeurs de depart etablies (sign_x=-1, sign_y=-1,
+  unit~12), offset propre a la carte => a finaliser en calibration MANUELLE via
+  les options (README section dediee). Par defaut: pas d'overlay.
+- Outils debug: `map_debug.py`, `map_calibrate.py`, sorties `map_debug_out/`.
+
 ## Strategie pour reprise future (priorites)
-1. Valider sur le vrai robot: entite image "Map", liste des pieces, `roborock_clean_rooms`
-   et CLEAN_AREA (UI) sur le Q10.
-2. Evaluer python-roborock 5.23.x (5.23.0 ajoute l'historique clean-record Q10);
-   attention: rester aligne avec la version embarquee par HA natif si possible.
-3. Exposer path/robot_position sur la carte (via `map.path` / `map.robot_position`,
-   deja parses par la lib).
-4. Ajouter tests (fixtures de status V1/B01 + parsing segments).
-5. Ajouter diagnostics HA plus detaillees (etat brut DPS B01 optionnel).
+1. Retirer/neutraliser l'overlay trace non fiable de image.py (v0.4.0) — il dessine
+   un trajet faux.
+2. Carte des PIECES interactive (independante de la calibration trace): camera +
+   xiaomi-vacuum-map-card en `identity` calibration + `predefined_selections` par
+   piece (bbox pixel de chaque couleur de piece) appelant `roborock_clean_rooms`.
+3. Position/trajet robot: calibration manuelle 2-3 points (robot au dock + positions
+   reperees dans l'appli) pour figer la transformation de CETTE carte, puis persister.
+4. Passage a python-roborock 5.27.0 + capteur d'erreur (YXFault).
+5. Ajouter tests (fixtures de status V1/B01 + parsing segments).
 
 ## Notes de debug
 Scripts existants:

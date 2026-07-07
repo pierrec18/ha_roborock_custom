@@ -44,11 +44,15 @@
     "step": {
       "init": {
         "title": "Options",
-        "description": "Règle l'intervalle de rafraîchissement.",
+        "description": "Règle l'intervalle de rafraîchissement. La calibration carte (avancé, B01/Q10) est un JSON optionnel pour superposer la position/le trajet du robot sur la carte, ex. {\"unit\": 12.5, \"off_x\": 187, \"off_y\": 124, \"sign_x\": -1, \"sign_y\": -1}. Laisser vide pour aucun overlay.",
         "data": {
-          "scan_interval": "Intervalle de polling (secondes)"
+          "scan_interval": "Intervalle de polling (secondes)",
+          "map_calibration": "Calibration carte (JSON, optionnel)"
         }
       }
+    },
+    "error": {
+      "invalid_calibration": "JSON de calibration invalide. Clés attendues : unit, off_x, off_y (et éventuellement sign_x, sign_y)."
     }
   }
 }

@@ -44,11 +44,15 @@
     "step": {
       "init": {
         "title": "Options",
-        "description": "Tune polling interval.",
+        "description": "Tune polling interval. Map calibration (advanced, B01/Q10) is an optional JSON to overlay the robot position/path on the map, e.g. {\"unit\": 12.5, \"off_x\": 187, \"off_y\": 124, \"sign_x\": -1, \"sign_y\": -1}. Leave empty for no overlay.",
         "data": {
-          "scan_interval": "Polling interval (seconds)"
+          "scan_interval": "Polling interval (seconds)",
+          "map_calibration": "Map calibration (JSON, optional)"
         }
       }
+    },
+    "error": {
+      "invalid_calibration": "Invalid calibration JSON. Expected keys: unit, off_x, off_y (and optionally sign_x, sign_y)."
     }
   }
 }
